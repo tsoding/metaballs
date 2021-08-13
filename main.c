@@ -63,7 +63,7 @@ static Pixel32 blend_pixels(Pixel32 a, Pixel32 b, float p)
     return (nr << (8 * 2)) | (ng << (8 * 1)) | (nb << (8 * 0));
 }
 
-#define FAST_RSQRT
+//#define FAST_RSQRT
 
 static void render_scene(Pixel32 *pixels, size_t width, size_t height,
                          Pixel32 background,
