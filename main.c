@@ -83,7 +83,7 @@ static void render_scene(Pixel32 *pixels, size_t width, size_t height,
 #endif // FAST_RSQRT
             float s = s1 + s2;
 
-            if (s >= 0.008f) {
+            if (s >= 0.005f) {
                 pixels[y*width + x] = blend_pixels(ball1_color, ball2_color, s1 / s);
             } else {
                 pixels[y*width + x] = background;
