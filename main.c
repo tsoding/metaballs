@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 199309L
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -11,6 +11,10 @@
 #include <windows.h>
 #else
 #include <X11/Xlib.h>
+#include <X11/extensions/XShm.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/mman.h>
 #endif // _WIN32
 
 #define LA_IMPLEMENTATION
@@ -68,7 +72,7 @@ static Pixel32 blend_pixels(Pixel32 a, Pixel32 b, float p)
     return (nr << (8 * 2)) | (ng << (8 * 1)) | (nb << (8 * 0));
 }
 
-// #define FAST_RSQRT
+#define FAST_RSQRT
 
 static void render_scene(Pixel32 *pixels, size_t width, size_t height,
                          Pixel32 background,
@@ -88,7 +92,7 @@ static void render_scene(Pixel32 *pixels, size_t width, size_t height,
 #endif // FAST_RSQRT
             float s = s1 + s2;
 
-            if (s >= 0.005f) {
+            if (s >= 0.007f) {
                 pixels[y*width + x] = blend_pixels(ball1_color, ball2_color, s1 / s);
             } else {
                 pixels[y*width + x] = background;
@@ -106,10 +110,9 @@ HBITMAP hbmp;
 HANDLE hTickThread;
 HWND hwnd;
 HDC hdcMem;
-static Pixel32 *pixels;
-#else
-static Pixel32 pixels[WIDTH*HEIGHT];
 #endif
+
+static Pixel32 *pixels;
 
 #define MIT_SHM_RENDER
 
@@ -121,6 +124,13 @@ int main(void)
     if (display == NULL) {
         fprintf(stderr, "ERROR: could not open the default display\n");
         exit(1);
+    }
+
+    Bool mit_shm_available = XShmQueryExtension(display);
+    if (!mit_shm_available) {
+        fprintf(stderr, "WARNING: could not find MIT-SHM extension\n");
+    } else {
+        fprintf(stderr, "INFO: detected MIT-SHM extension\n");
     }
 
     Window window = XCreateSimpleWindow(
@@ -135,16 +145,63 @@ int main(void)
     XWindowAttributes wa = {0};
     XGetWindowAttributes(display, window, &wa);
 
-    XImage *image = XCreateImage(display,
-                                 wa.visual,
-                                 wa.depth,
-                                 ZPixmap,
-                                 0,
-                                 (char*) pixels,
-                                 WIDTH,
-                                 HEIGHT,
-                                 32,
-                                 WIDTH * sizeof(Pixel32));
+    XImage *image;
+    XShmSegmentInfo shminfo = {0};
+    if (mit_shm_available) {
+        shminfo.readOnly = True;
+        shminfo.shmid = shmget(IPC_PRIVATE, WIDTH*HEIGHT*sizeof(Pixel32), IPC_CREAT|0777);
+        if (shminfo.shmid < 0) {
+            fprintf(stderr, "ERROR: Could not create a new shared memory segment: %s\n",
+                    strerror(errno));
+            exit(1);
+        }
+
+        pixels = shmat(shminfo.shmid, 0, 0);
+        shminfo.shmaddr = (char*) pixels;
+        if (shminfo.shmaddr == (void*) -1) {
+            fprintf(stderr, "ERROR: could not memory map the shared memory segment: %s\n",
+                    strerror(errno));
+            exit(1);
+        }
+
+        if (!XShmAttach(display, &shminfo)) {
+            fprintf(stderr, "ERROR: could not attach the shared memory segment to the server\n");
+            exit(1);
+        }
+
+        image = XShmCreateImage(display,
+                                wa.visual,
+                                wa.depth,
+                                ZPixmap,
+                                (char *) pixels,
+                                &shminfo,
+                                WIDTH,
+                                HEIGHT);
+    } else {
+        pixels = mmap(NULL,
+                      WIDTH*HEIGHT*sizeof(Pixel32),
+                      PROT_READ|PROT_WRITE,
+                      MAP_PRIVATE|MAP_ANONYMOUS,
+                      -1,
+                      0);
+        if (pixels == MAP_FAILED) {
+            fprintf(stderr, "ERROR: Could not allocate memory for pixels: %s\n",
+                    strerror(errno));
+            exit(1);
+        }
+        image = XCreateImage(display,
+                             wa.visual,
+                             wa.depth,
+                             ZPixmap,
+                             0,
+                             (char*) pixels,
+                             WIDTH,
+                             HEIGHT,
+                             32,
+                             WIDTH * sizeof(Pixel32));
+    }
+
+    Pixmap back_pixmap = XCreatePixmap(display, window, WIDTH, HEIGHT, wa.depth);
 
     GC gc = XCreateGC(display, window, 0, NULL);
 
@@ -200,9 +257,9 @@ int main(void)
         global_time = (float) now.tv_sec + now.tv_nsec * 0.000000001f;
 
         V2f ball1 = v2ff(400.0f);
-        // V2f ball2 = v2f_sum(v2f_mul(v2f(WIDTH, HEIGHT), v2ff(0.5)),
-        //                     v2f_mul(v2f(cosf(4.0f*global_time), sinf(4.0f*global_time)),
-        //                             v2ff(HEIGHT * 0.25f)));
+        // ball2 = v2f_sum(v2f_mul(v2f(WIDTH, HEIGHT), v2ff(0.5)),
+        //                 v2f_mul(v2f(cosf(4.0f*global_time), sinf(4.0f*global_time)),
+        //                         v2ff(HEIGHT * 0.25f)));
 
         clear_summary();
         begin_clock("TOTAL");
@@ -213,13 +270,14 @@ int main(void)
                          ball2, 0xEE22EE);
             end_clock();
 
-            // TODO: send the image over MIT-SHM
-            begin_clock("XPutImage");
-            XPutImage(display, window, gc, image,
-                      0, 0,
-                      0, 0,
-                      WIDTH,
-                      HEIGHT);
+            begin_clock("PutImage");
+            if (mit_shm_available) {
+                // TODO: handle the send_event properly
+                XShmPutImage(display, back_pixmap, gc, image, 0, 0, 0, 0, WIDTH, HEIGHT, False);
+            } else {
+                XPutImage(display, back_pixmap, gc, image, 0, 0, 0, 0, WIDTH, HEIGHT);
+            }
+            XCopyArea(display, back_pixmap, window, gc, 0, 0, WIDTH, HEIGHT, 0, 0);
             XSync(display, False);
             end_clock();
         }
