@@ -125,17 +125,22 @@ size_t estimate_line_width(void)
     return line_width;
 }
 
+void clear_summary(void)
+{
+    clock_stack_count = 0;
+    summary_count = 0;
+}
+
 void dump_summary(FILE *stream)
 {
     size_t line_width = estimate_line_width();
     render_summary(stream, line_width + 2);
-
-    clock_stack_count = 0;
-    summary_count = 0;
+    clear_summary();
 }
 
 #else
 #define begin_clock(...)
 #define end_clock(...)
 #define dump_summary(...)
+#define clear_summary(...)
 #endif

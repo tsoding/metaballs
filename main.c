@@ -16,7 +16,7 @@
 #define LA_IMPLEMENTATION
 #include "la.h"
 
-// #define PROF
+#define PROF
 #include "prof.c"
 
 typedef uint32_t Pixel32;
@@ -68,7 +68,7 @@ static Pixel32 blend_pixels(Pixel32 a, Pixel32 b, float p)
     return (nr << (8 * 2)) | (ng << (8 * 1)) | (nb << (8 * 0));
 }
 
-//#define FAST_RSQRT
+// #define FAST_RSQRT
 
 static void render_scene(Pixel32 *pixels, size_t width, size_t height,
                          Pixel32 background,
@@ -110,6 +110,8 @@ static Pixel32 *pixels;
 #else
 static Pixel32 pixels[WIDTH*HEIGHT];
 #endif
+
+#define MIT_SHM_RENDER
 
 #ifndef _WIN32
 
@@ -168,6 +170,9 @@ int main(void)
                 case 'q':
                     quit = 1;
                     break;
+                case 'p':
+                    dump_summary(stdout);
+                    break;
                 }
             }
             break;
@@ -199,22 +204,26 @@ int main(void)
         //                     v2f_mul(v2f(cosf(4.0f*global_time), sinf(4.0f*global_time)),
         //                             v2ff(HEIGHT * 0.25f)));
 
-        begin_clock("FRAME");
-        render_scene(pixels, WIDTH, HEIGHT, BACKGROUND,
-                     ball1, 0xEEEE22,
-                     ball2, 0xEE22EE);
-        end_clock();
-        dump_summary(stdout);
-#ifdef PROF
-        exit(0);
-#endif
+        clear_summary();
+        begin_clock("TOTAL");
+        {
+            begin_clock("SCENE");
+            render_scene(pixels, WIDTH, HEIGHT, BACKGROUND,
+                         ball1, 0xEEEE22,
+                         ball2, 0xEE22EE);
+            end_clock();
 
-        // TODO: send the image over MIT-SHM
-        XPutImage(display, window, gc, image,
-                  0, 0,
-                  0, 0,
-                  WIDTH,
-                  HEIGHT);
+            // TODO: send the image over MIT-SHM
+            begin_clock("XPutImage");
+            XPutImage(display, window, gc, image,
+                      0, 0,
+                      0, 0,
+                      WIDTH,
+                      HEIGHT);
+            XSync(display, False);
+            end_clock();
+        }
+        end_clock();
     }
 
     XCloseDisplay(display);
@@ -240,11 +249,9 @@ DWORD WINAPI tickThreadProc(HANDLE handle)
     V2f ball1 = v2ff(400.0f);
     V2f ball2 = v2ff(0.0f);
 
-    for (;;)
-    {
+    for (;;) {
         POINT p;
-        if (GetCursorPos(&p) && ScreenToClient(hwnd, &p))
-        {
+        if (GetCursorPos(&p) && ScreenToClient(hwnd, &p)) {
             ball2 = v2f(p.x, p.y);
 
             render_scene(pixels, WIDTH, HEIGHT, BACKGROUND, ball1, 0xEEEE22, ball2, 0xEE22EE);
@@ -285,28 +292,23 @@ void MakeSurface(HWND hwnd)
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    switch (msg)
-    {
-    case WM_CREATE:
-    {
+    switch (msg) {
+    case WM_CREATE: {
         MakeSurface(hwnd);
     }
     break;
-    case WM_PAINT:
-    {
+    case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
         BitBlt(hdc, 0, 0, WIDTH, HEIGHT, hdcMem, 0, 0, SRCCOPY);
         EndPaint(hwnd, &ps);
     }
     break;
-    case WM_CLOSE:
-    {
+    case WM_CLOSE: {
         DestroyWindow(hwnd);
     }
     break;
-    case WM_DESTROY:
-    {
+    case WM_DESTROY: {
         TerminateThread(hTickThread, 0);
         PostQuitMessage(0);
     }
@@ -336,22 +338,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpszMenuName = NULL;
     wc.style = 0;
 
-    if (!RegisterClassEx(&wc))
-    {
+    if (!RegisterClassEx(&wc)) {
         MessageBox(NULL, "Failed to register window class.", "Error", MB_OK);
         return 0;
     }
 
     hwnd = CreateWindowEx(
-        WS_EX_APPWINDOW,
-        "animation_class",
-        "metaballs",
-        WS_MINIMIZEBOX | WS_SYSMENU | WS_POPUP | WS_CAPTION,
-        CW_USEDEFAULT, CW_USEDEFAULT, WIDTH, HEIGHT,
-        NULL, NULL, hInstance, NULL);
+               WS_EX_APPWINDOW,
+               "animation_class",
+               "metaballs",
+               WS_MINIMIZEBOX | WS_SYSMENU | WS_POPUP | WS_CAPTION,
+               CW_USEDEFAULT, CW_USEDEFAULT, WIDTH, HEIGHT,
+               NULL, NULL, hInstance, NULL);
 
-    while (GetMessage(&msg, 0, 0, 0) > 0)
-    {
+    while (GetMessage(&msg, 0, 0, 0) > 0) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
