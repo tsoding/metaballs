@@ -25,18 +25,6 @@
 
 typedef uint32_t Pixel32;
 
-static void fill_pixels_unsafe(Pixel32 *pixels, size_t width, size_t height, size_t stride,
-                               Pixel32 pixel)
-{
-    while (height-- > 0) {
-        for (size_t x = 0; x < width; ++x) {
-            pixels[x] = pixel;
-        }
-        pixels += stride;
-    }
-}
-
-
 static float Q_rsqrt( float number )
 {
     long i;
