@@ -80,7 +80,7 @@ static void render_scene(Pixel32 *pixels, size_t width, size_t height,
 #endif // FAST_RSQRT
             float s = s1 + s2;
 
-            if (s >= 0.007f) {
+            if (s >= 0.005f) {
                 pixels[y*width + x] = blend_pixels(ball1_color, ball2_color, s1 / s);
             } else {
                 pixels[y*width + x] = background;
@@ -189,8 +189,6 @@ int main(void)
                              WIDTH * sizeof(Pixel32));
     }
 
-    Pixmap back_pixmap = XCreatePixmap(display, window, WIDTH, HEIGHT, wa.depth);
-
     GC gc = XCreateGC(display, window, 0, NULL);
 
     Atom wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
@@ -203,6 +201,9 @@ int main(void)
     float global_time = 0.0f;
 
     V2f ball2 = v2ff(0.0f);
+
+    int CompletionType = XShmGetEventBase (display) + ShmCompletion;
+    int SafeToRender = 1;
 
     int quit = 0;
     while (!quit) {
@@ -233,6 +234,12 @@ int main(void)
                 }
             }
             break;
+
+            default: {
+                if (event.type == CompletionType) {
+                    SafeToRender = 1;
+                }
+            }
             }
         }
 
@@ -249,27 +256,27 @@ int main(void)
         //                 v2f_mul(v2f(cosf(4.0f*global_time), sinf(4.0f*global_time)),
         //                         v2ff(HEIGHT * 0.25f)));
 
-        clear_summary();
-        begin_clock("TOTAL");
-        {
-            begin_clock("SCENE");
-            render_scene(pixels, WIDTH, HEIGHT, BACKGROUND,
-                         ball1, 0xEEEE22,
-                         ball2, 0xEE22EE);
-            end_clock();
+        if (SafeToRender) {
+            clear_summary();
+            begin_clock("TOTAL");
+            {
+                begin_clock("SCENE");
+                render_scene(pixels, WIDTH, HEIGHT, BACKGROUND,
+                             ball1, 0xEEEE22,
+                             ball2, 0xEE22EE);
+                end_clock();
 
-            begin_clock("PutImage");
-            if (mit_shm_available) {
-                // TODO: handle the send_event properly
-                XShmPutImage(display, back_pixmap, gc, image, 0, 0, 0, 0, WIDTH, HEIGHT, False);
-            } else {
-                XPutImage(display, back_pixmap, gc, image, 0, 0, 0, 0, WIDTH, HEIGHT);
+                begin_clock("PutImage");
+                if (mit_shm_available) {
+                    XShmPutImage(display, window, gc, image, 0, 0, 0, 0, WIDTH, HEIGHT, True);
+                    SafeToRender = 0;
+                } else {
+                    XPutImage(display, window, gc, image, 0, 0, 0, 0, WIDTH, HEIGHT);
+                }
+                end_clock();
             }
-            XCopyArea(display, back_pixmap, window, gc, 0, 0, WIDTH, HEIGHT, 0, 0);
-            XSync(display, False);
             end_clock();
         }
-        end_clock();
     }
 
     XCloseDisplay(display);
