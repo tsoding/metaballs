@@ -1,19 +1,17 @@
 #define _POSIX_C_SOURCE 199309L
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <windowsx.h>
-#include <objidl.h>
-#else
-#include <X11/Xlib.h>
-#endif // _WIN32
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
 #include <string.h>
 #include <errno.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <X11/Xlib.h>
+#endif // _WIN32
 
 #define LA_IMPLEMENTATION
 #include "la.h"
