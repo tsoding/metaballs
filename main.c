@@ -350,19 +350,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         CW_USEDEFAULT, CW_USEDEFAULT, WIDTH, HEIGHT,
         NULL, NULL, hInstance, NULL);
 
-    RECT rcClient, rcWindow;
-    POINT ptDiff;
-
-    GetClientRect(hwnd, &rcClient);
-    GetWindowRect(hwnd, &rcWindow);
-
-    ptDiff.x = (rcWindow.right - rcWindow.left) - rcClient.right;
-    ptDiff.y = (rcWindow.bottom - rcWindow.top) - rcClient.bottom;
-
-    MoveWindow(hwnd, rcWindow.left, rcWindow.top, WIDTH + ptDiff.x, HEIGHT + ptDiff.y, FALSE);
-
-    UpdateWindow(hwnd);
-
     while (GetMessage(&msg, 0, 0, 0) > 0)
     {
         TranslateMessage(&msg);
