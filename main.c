@@ -62,6 +62,8 @@ static Pixel32 blend_pixels(Pixel32 a, Pixel32 b, float p)
 
 //#define FAST_RSQRT
 
+#define SQRT_FALLOFF
+
 static void render_scene(Pixel32 *pixels, size_t width, size_t height,
                          Pixel32 background,
                          V2f ball1, Pixel32 ball1_color,
@@ -70,14 +72,21 @@ static void render_scene(Pixel32 *pixels, size_t width, size_t height,
     for (int y = 0; (size_t) y < height; ++y) {
         for (int x = 0; (size_t) x < width; ++x) {
             V2f p = v2f_sum(v2f(x, y), v2ff(0.5));
-#ifdef FAST_RSQRT
+#ifdef SQRT_FALLOFF
+#  ifdef FAST_RSQRT
             // NOTE: this breaks on GCC 8.3.0 with -O3
             float s1 = Q_rsqrt(v2f_sqrlen(v2f_sub(ball1, p)));
             float s2 = Q_rsqrt(v2f_sqrlen(v2f_sub(ball2, p)));
-#else
+#  else
             float s1 = 1.0f/sqrtf(v2f_sqrlen(v2f_sub(ball1, p)));
             float s2 = 1.0f/sqrtf(v2f_sqrlen(v2f_sub(ball2, p)));
-#endif // FAST_RSQRT
+#  endif // FAST_RSQRT
+#else
+            float s1 = 1.0f / v2f_sqrlen(v2f_sub(ball1, p));
+            s1 *= s1;
+            float s2 = 1.0f / v2f_sqrlen(v2f_sub(ball2, p));
+            s2 *= s2;
+#endif // SQRT_FALLOFF
             float s = s1 + s2;
 
             if (s >= 0.005f) {
