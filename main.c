@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -27,13 +28,16 @@ typedef uint32_t Pixel32;
 
 static float Q_rsqrt( float number )
 {
-    long i;
+    static_assert(sizeof( float ) == sizeof( uint32_t ),
+                  "FAST_RSQRT does not work on this architecture");
+
+    uint32_t i;
     float x2, y;
     const float threehalfs = 1.5F;
 
     x2 = number * 0.5F;
     y  = number;
-    i  = * ( long * ) &y;                       // evil floating point bit level hacking
+    i  = * ( uint32_t * ) &y;                   // evil floating point bit level hacking
     i  = 0x5f3759df - ( i >> 1 );               // what the fuck?
     y  = * ( float * ) &i;
     y  = y * ( threehalfs - ( x2 * y * y ) );   // 1st iteration
@@ -60,7 +64,7 @@ static Pixel32 blend_pixels(Pixel32 a, Pixel32 b, float p)
     return (nr << (8 * 2)) | (ng << (8 * 1)) | (nb << (8 * 0));
 }
 
-//#define FAST_RSQRT
+#define FAST_RSQRT
 
 #define SQRT_FALLOFF
 
@@ -74,7 +78,6 @@ static void render_scene(Pixel32 *pixels, size_t width, size_t height,
             V2f p = v2f_sum(v2f(x, y), v2ff(0.5));
 #ifdef SQRT_FALLOFF
 #  ifdef FAST_RSQRT
-            // NOTE: this breaks on GCC 8.3.0 with -O3
             float s1 = Q_rsqrt(v2f_sqrlen(v2f_sub(ball1, p)));
             float s2 = Q_rsqrt(v2f_sqrlen(v2f_sub(ball2, p)));
 #  else
